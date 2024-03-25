@@ -2,6 +2,8 @@ package org.bouncycastle.tls.crypto.impl.bc;
 
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
 import org.bouncycastle.crypto.SecretWithEncapsulation;
+import org.bouncycastle.crypto.digests.SHA3Digest;
+import org.bouncycastle.crypto.digests.SHAKEDigest;
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMExtractor;
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMGenerator;
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKeyGenerationParameters;
@@ -9,6 +11,7 @@ import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKeyPairGenerator;
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberParameters;
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberPrivateKeyParameters;
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberPublicKeyParameters;
+import org.bouncycastle.pqc.crypto.util.SecretWithEncapsulationImpl;
 import org.bouncycastle.tls.NamedGroup;
 import org.bouncycastle.tls.crypto.TlsAgreement;
 import org.bouncycastle.tls.crypto.TlsPQCConfig;
@@ -35,6 +38,10 @@ public class BcTlsKyberDomain implements TlsPQCDomain
     protected final BcTlsCrypto crypto;
     protected final TlsPQCConfig pqcConfig;
     protected final KyberParameters kyberParameters;
+    private final SHA3Digest sha3Digest256;
+    private final SHAKEDigest shakeDigest;
+    private static final int KyberSymBytes = 32;
+
 
     public TlsPQCConfig getTlsPQCConfig()
     {
@@ -46,6 +53,8 @@ public class BcTlsKyberDomain implements TlsPQCDomain
         this.crypto = crypto;
         this.pqcConfig = pqcConfig;
         this.kyberParameters = getKyberParameters(pqcConfig);
+        this.shakeDigest = new SHAKEDigest(256);
+        this.sha3Digest256 = new SHA3Digest(256);
     }
 
     public TlsAgreement createPQC()
@@ -78,13 +87,36 @@ public class BcTlsKyberDomain implements TlsPQCDomain
     public SecretWithEncapsulation enCap(KyberPublicKeyParameters peerPublicKey)
     {
         KyberKEMGenerator kemGen = new KyberKEMGenerator(crypto.getSecureRandom());
-        return kemGen.generateEncapsulated(peerPublicKey);
+        SecretWithEncapsulation secretWithEncapsulation = kemGen.generateEncapsulated(peerPublicKey);
+        byte[] outputSharedSecret = new byte[KyberSymBytes];
+        byte[] kr = new byte[2*KyberSymBytes];
+        System.arraycopy(secretWithEncapsulation.getEncapsulation(), 0, kr, 0, KyberSymBytes);
+        hash_h(kr, secretWithEncapsulation.getSecret(), KyberSymBytes);
+        kdf(outputSharedSecret, kr);
+        return new SecretWithEncapsulationImpl(outputSharedSecret, secretWithEncapsulation.getEncapsulation());
     }
 
     public byte[] deCap(KyberPrivateKeyParameters kyberPrivateKeyParameters, byte[] cipherText)
     {
         KyberKEMExtractor kemExtract = new KyberKEMExtractor(kyberPrivateKeyParameters);
         byte[] secret = kemExtract.extractSecret(cipherText);
-        return secret;
+        byte[] outputSharedSecret = new byte[KyberSymBytes];
+        byte[] kr = new byte[2*KyberSymBytes];
+        System.arraycopy(secret, 0, kr, 0, KyberSymBytes);
+        hash_h(kr, cipherText, KyberSymBytes);
+        kdf(outputSharedSecret, kr);
+        return outputSharedSecret;
+    }
+
+    private void kdf(byte[] out, byte[] in)
+    {
+        shakeDigest.update(in, 0, in.length);
+        shakeDigest.doFinal(out, 0, out.length);
+    }
+
+    private void hash_h(byte[] out, byte[] in, int outOffset)
+    {
+        sha3Digest256.update(in, 0, in.length);
+        sha3Digest256.doFinal(out, outOffset);
     }
 }

@@ -419,6 +419,24 @@ public abstract class AbstractTlsClient
         {
             return null;
         }
+        if (supportedGroups.contains(Integers.valueOf(NamedGroup.x25519Kyber512)))
+        {
+            if (supportedGroups.contains(Integers.valueOf(NamedGroup.x25519)))
+            {
+                Object[] groups = {NamedGroup.x25519Kyber512, NamedGroup.x25519};
+                return TlsUtils.vectorFromArray(groups);
+            }
+            return TlsUtils.vectorOfOne(Integers.valueOf(NamedGroup.x25519Kyber512));
+        }
+        if (supportedGroups.contains(Integers.valueOf(NamedGroup.x25519Kyber768)))
+        {
+            if (supportedGroups.contains(Integers.valueOf(NamedGroup.x25519)))
+            {
+                Object[] groups = {NamedGroup.x25519Kyber768, NamedGroup.x25519};
+                return TlsUtils.vectorFromArray(groups);
+            }
+            return TlsUtils.vectorOfOne(Integers.valueOf(NamedGroup.x25519Kyber768));
+        }
         if (supportedGroups.contains(Integers.valueOf(NamedGroup.x25519)))
         {
             return TlsUtils.vectorOfOne(Integers.valueOf(NamedGroup.x25519));
